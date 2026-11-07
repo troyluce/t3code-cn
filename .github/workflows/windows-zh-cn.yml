@@ -59,6 +59,10 @@ jobs:
         uses: ./.github/actions/setup-ci-deps
         with:
           install-args: --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts... --filter=@t3tools/oxlint-plugin-t3code...
+      - name: 注册 Windows 原生工具路径
+        run: |
+          echo "$(cygpath -w "$(dirname "$(command -v vp)")")" >> "$GITHUB_PATH"
+          echo "$(cygpath -w "$GITHUB_WORKSPACE/node_modules/.bin")" >> "$GITHUB_PATH"
       - name: 检查汉化逻辑与类型
         run: |
           set -euo pipefail
@@ -103,7 +107,7 @@ jobs:
       - name: 构建 Windows x64 中文安装器
         run: |
           set -euo pipefail
-          node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --build-version 0.1.7 --output-dir release --keep-stage --wsl-runtime "$GITHUB_WORKSPACE/build/official/t3-0.1.7-linux-x64.tar.gz" 2>&1 | tee build/logs/build-windows.log
+          vp exec node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --build-version 0.1.7 --output-dir release --keep-stage --wsl-runtime "$GITHUB_WORKSPACE/build/official/t3-0.1.7-linux-x64.tar.gz" 2>&1 | tee build/logs/build-windows.log
       - name: 启动打包程序并验证中文界面
         run: |
           set -euo pipefail
