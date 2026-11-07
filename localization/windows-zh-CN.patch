@@ -48,6 +48,42 @@ index a7a5e745..58772fe2 100644
    <head>
      <meta charset="UTF-8" />
      <meta
+diff --git a/apps/web/src/components/onboarding/WelcomeWizard.tsx b/apps/web/src/components/onboarding/WelcomeWizard.tsx
+index 2eb6bcd6..4abf4998 100644
+--- a/apps/web/src/components/onboarding/WelcomeWizard.tsx
++++ b/apps/web/src/components/onboarding/WelcomeWizard.tsx
+@@ -241,7 +241,12 @@ export function WelcomeWizard({
+         <WizardHeader
+           title="Set up T3 Code"
+           identity={
+-            <div className="flex items-baseline gap-1.5" role="img" aria-label="T3 Code">
++            <div
++              className="flex items-baseline gap-1.5"
++              role="img"
++              aria-label="T3 Code"
++              translate="no"
++            >
+               <T3Wordmark className="h-4 w-auto shrink-0" aria-hidden />
+               <span className="text-2xl font-medium tracking-tight text-muted-foreground">
+                 Code
+diff --git a/apps/web/src/components/ui/standalone-page.tsx b/apps/web/src/components/ui/standalone-page.tsx
+index 0881b84c..90505798 100644
+--- a/apps/web/src/components/ui/standalone-page.tsx
++++ b/apps/web/src/components/ui/standalone-page.tsx
+@@ -23,7 +23,12 @@ export function StandalonePageHeader({
+   return (
+     <>
+       <div className="flex items-baseline justify-between gap-3 text-muted-foreground">
+-        <span className="flex items-baseline gap-1.5" role="img" aria-label="T3 Code">
++        <span
++          className="flex items-baseline gap-1.5"
++          role="img"
++          aria-label="T3 Code"
++          translate="no"
++        >
+           <T3Wordmark className="h-3 w-auto shrink-0 text-foreground" aria-hidden />
+           <span className="text-lg font-medium tracking-tight">Code</span>
+         </span>
 diff --git a/apps/web/src/timestampFormat.test.ts b/apps/web/src/timestampFormat.test.ts
 index 5b5e11d8..d09db458 100644
 --- a/apps/web/src/timestampFormat.test.ts
@@ -379,10 +415,10 @@ index 6756f6fe..7b8cb458 100644
      const winConfig: Record<string, unknown> = {
 diff --git a/scripts/lib/zh-cn-localization.test.ts b/scripts/lib/zh-cn-localization.test.ts
 new file mode 100644
-index 00000000..3a5d3491
+index 00000000..815c2ad9
 --- /dev/null
 +++ b/scripts/lib/zh-cn-localization.test.ts
-@@ -0,0 +1,95 @@
+@@ -0,0 +1,109 @@
 +import { assert, describe, it } from "@effect/vitest";
 +import { localizeChineseCode } from "./zh-cn-localization.ts";
 +
@@ -398,6 +434,10 @@ index 00000000..3a5d3491
 +      const info = {label: "message.dispatch"};
 +      const error = new Error("Settings");
 +      confirmApproval("accept"); confirmMerge("merge"); setError("offline");
++      const command = <code>npx t3 serve</code>;
++      const example = <CodeBlock text="bun test" />;
++      const brand = <span translate="no">Code</span>;
++      const ONBOARDING_STAGES = ["Connect", "Agents", "Projects"] as const;
 +      const node = <button aria-label="Settings" value="Default">Settings</button>;
 +      if (request.command === "Stop") request.value = "Default";`;
 +    const output = localizeChineseCode(input, file, {
@@ -409,10 +449,17 @@ index 00000000..3a5d3491
 +      merge: "合并",
 +      offline: "离线",
 +      "message.dispatch": "调度消息",
++      "npx t3 serve": "错误的翻译",
++      "bun test": "错误的翻译",
++      Code: "代码",
++      Connect: "连接",
++      Agents: "智能体",
++      Projects: "项目",
 +    })!.code;
 +    assert.include(output, 'title: "新建会话"');
 +    assert.include(output, 'aria-label={"设置"}');
 +    assert.include(output, ">设置</button>");
++    assert.include(output, '["连接", "智能体", "项目"]');
 +    for (const preserved of [
 +      '"./Settings"',
 +      'type: "message.dispatch"',
@@ -426,6 +473,9 @@ index 00000000..3a5d3491
 +      'confirmApproval("accept")',
 +      'confirmMerge("merge")',
 +      'setError("offline")',
++      "<code>npx t3 serve</code>",
++      '<CodeBlock text="bun test" />',
++      '<span translate="no">Code</span>',
 +    ])
 +      assert.include(output, preserved);
 +  });
@@ -480,10 +530,10 @@ index 00000000..3a5d3491
 +});
 diff --git a/scripts/lib/zh-cn-localization.ts b/scripts/lib/zh-cn-localization.ts
 new file mode 100644
-index 00000000..8dbc1466
+index 00000000..20a7a73e
 --- /dev/null
 +++ b/scripts/lib/zh-cn-localization.ts
-@@ -0,0 +1,210 @@
+@@ -0,0 +1,236 @@
 +import MagicString from "magic-string";
 +import ts from "typescript-legacy";
 +import type { Plugin } from "vite-plus";
@@ -513,6 +563,10 @@ index 00000000..8dbc1466
 +  }
 +  if (!parent) return false;
 +  if (ts.isTemplateSpan(parent)) return isDisplayValue(parent.parent);
++  if (ts.isArrayLiteralExpression(parent)) {
++    const owner = ts.isAsExpression(parent.parent) ? parent.parent.parent : parent.parent;
++    return ts.isVariableDeclaration(owner) && owner.name.getText() === "ONBOARDING_STAGES";
++  }
 +  if (ts.isJsxAttribute(parent)) return displayProperties.test(parent.name.getText());
 +  if (ts.isJsxElement(parent) || ts.isJsxFragment(parent)) return true;
 +  const displayVariable =
@@ -570,6 +624,12 @@ index 00000000..8dbc1466
 +  const key = normalize(text);
 +  if (/^[a-z\d]+(?:[./:_-][a-z\d]+)+$/.test(key) || /^(?:https?:|[~/\\]|--)/.test(key))
 +    return undefined;
++  if (
++    /^(?:npx|npm|pnpm|bunx?|yarn|node|python\d*|pip\d*|uv|cargo|git|gh|codex|claude|opencode|ssh|tailscale|curl|wget|powershell|pwsh|bash|zsh)\s/.test(
++      key,
++    )
++  )
++    return undefined;
 +  const result = catalog[key];
 +  if (result === undefined || result === key) return undefined;
 +  const placeholders = (value: string) => [...value.matchAll(/\{\d+\}/g)].map((m) => m[0]).sort();
@@ -602,6 +662,22 @@ index 00000000..8dbc1466
 +    return value;
 +  };
 +  const visit = (node: ts.Node) => {
++    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
++      const opening = ts.isJsxElement(node) ? node.openingElement : node;
++      const verbatim =
++        /^(?:code|pre|kbd|samp|CodeBlock|CodeSnippet|InlineCode|CommandBlock)$/.test(
++          opening.tagName.getText(source),
++        ) ||
++        opening.attributes.properties.some(
++          (attribute) =>
++            ts.isJsxAttribute(attribute) &&
++            attribute.name.getText(source) === "translate" &&
++            attribute.initializer &&
++            ts.isStringLiteral(attribute.initializer) &&
++            attribute.initializer.text === "no",
++        );
++      if (verbatim) return;
++    }
 +    ts.forEachChild(node, visit);
 +    const start = ts.isJsxText(node) ? node.pos : node.getStart(source);
 +    let text: string | undefined;
@@ -708,10 +784,10 @@ index d5f34a07..1264257e 100644
      "typescript-legacy": "npm:typescript@~6.0.3",
 diff --git a/scripts/smoke-chinese-desktop.mjs b/scripts/smoke-chinese-desktop.mjs
 new file mode 100644
-index 00000000..0101ce67
+index 00000000..fe27d85f
 --- /dev/null
 +++ b/scripts/smoke-chinese-desktop.mjs
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,86 @@
 +import * as NodeFSP from "node:fs/promises";
 +import * as NodeOS from "node:os";
 +import * as NodePath from "node:path";
@@ -753,8 +829,20 @@ index 00000000..0101ce67
 +  );
 +  for (const label of ["文件", "编辑", "视图"])
 +    NodeAssert.ok(menuLabels.includes(label), "菜单缺少中文：" + label);
++  const onboardingClose = page.getByRole("button", { name: "关闭", exact: true });
++  if (await onboardingClose.isVisible()) {
++    await page.screenshot({ path: NodePath.join(output, "windows-onboarding.png") });
++    await onboardingClose.click();
++    await onboardingClose.waitFor({ state: "hidden", timeout: 60000 });
++  }
 +  await page.screenshot({ path: NodePath.join(output, "windows-home.png") });
-+  await page.keyboard.press("Control+,");
++  await app.evaluate(({ Menu, BrowserWindow }) => {
++    const settings = Menu.getApplicationMenu()
++      ?.items.find((item) => item.label === "文件")
++      ?.submenu?.items.find((item) => item.label.startsWith("设置"));
++    if (!settings) throw new Error("未找到设置菜单项。");
++    settings.click(settings, BrowserWindow.getFocusedWindow(), {});
++  });
 +  await page
 +    .getByRole("textbox", { name: "搜索设置", exact: true })
 +    .waitFor({ state: "visible", timeout: 60000 });
