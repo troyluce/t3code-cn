@@ -1,0 +1,105 @@
+--- a/apps/desktop/src/window/DesktopApplicationMenu.ts
++++ b/apps/desktop/src/window/DesktopApplicationMenu.ts
+@@ -175,11 +175,11 @@
+             click: settingsClick,
+           },
+           { type: "separator" },
+-          { role: "services" },
++          { role: "services", label: "服务" },
+           { type: "separator" },
+           { role: "hide", label: `Hide ${environment.displayName}` },
+-          { role: "hideOthers" },
+-          { role: "unhide" },
++          { role: "hideOthers", label: "隐藏其他窗口" },
++          { role: "unhide", label: "显示全部窗口" },
+           { type: "separator" },
+           { role: "quit", label: `Quit ${environment.displayName}` },
+         ],
+@@ -203,32 +203,35 @@
+           // Cmd/Ctrl+W belongs to the renderer's tab close; it must never close the window.
+           environment.platform === "darwin"
+             ? { label: "Close Window", click: (_item, window) => window?.close() }
+-            : { role: "quit" },
++            : { role: "quit", label: "退出" },
+         ],
+       },
+       {
+         label: "Edit",
+         submenu: [
+-          { role: "undo" },
+-          { role: "redo" },
+-          { type: "separator" },
+-          { role: "cut" },
+-          { role: "copy" },
+-          { role: "paste" },
++          { role: "undo", label: "撤销" },
++          { role: "redo", label: "重做" },
++          { type: "separator" },
++          { role: "cut", label: "剪切" },
++          { role: "copy", label: "复制" },
++          { role: "paste", label: "粘贴" },
+           {
+             label: "Paste as Text",
+             accelerator: "CmdOrCtrl+Shift+V",
+             click: pasteAsTextClick,
+           },
+-          { role: "delete" },
+-          { type: "separator" },
+-          { role: "selectAll" },
++          { role: "delete", label: "删除" },
++          { type: "separator" },
++          { role: "selectAll", label: "全选" },
+           ...(environment.platform === "darwin"
+             ? [
+                 { type: "separator" as const },
+                 {
+                   label: "Speech",
+-                  submenu: [{ role: "startSpeaking" as const }, { role: "stopSpeaking" as const }],
++                  submenu: [
++                    { role: "startSpeaking" as const, label: "开始朗读" },
++                    { role: "stopSpeaking" as const, label: "停止朗读" },
++                  ],
+                 },
+               ]
+             : []),
+@@ -289,22 +292,24 @@
+             click: zoomClick("out"),
+           },
+           { type: "separator" },
+-          { role: "togglefullscreen" },
++          { role: "togglefullscreen", label: "切换全屏" },
+         ],
+       },
+       {
+         // Electron's default Window submenu adds a Ctrl+W close role off macOS.
+         role: "windowMenu",
+-        submenu: [
+-          { role: "minimize" },
+-          { role: "zoom" },
++        label: "窗口",
++        submenu: [
++          { role: "minimize", label: "最小化" },
++          { role: "zoom", label: "缩放" },
+           ...(environment.platform === "darwin"
+-            ? [{ type: "separator" as const }, { role: "front" as const }]
++            ? [{ type: "separator" as const }, { role: "front" as const, label: "前置所有窗口" }]
+             : []),
+         ],
+       },
+       {
+         role: "help",
++        label: "帮助",
+         submenu: [
+           {
+             label: "Check for Updates...",
+--- a/scripts/smoke-chinese-desktop.mjs
++++ b/scripts/smoke-chinese-desktop.mjs
+@@ -37,7 +37,7 @@
+   const menuLabels = await app.evaluate(
+     ({ Menu }) => Menu.getApplicationMenu()?.items.map((item) => item.label) ?? [],
+   );
+-  for (const label of ["文件", "编辑", "视图"])
++  for (const label of ["文件", "编辑", "视图", "窗口", "帮助"])
+     NodeAssert.ok(menuLabels.includes(label), "菜单缺少中文：" + label);
+   const onboardingClose = page.getByRole("button", { name: "关闭", exact: true });
+   if (await onboardingClose.isVisible()) {
