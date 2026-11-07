@@ -1,0 +1,152 @@
+name: 构建并发布 Windows 简体中文版
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["codex/windows-zh-0.1.7"]
+    paths:
+      - ".github/workflows/windows-zh-cn.yml"
+      - "localization/windows-zh-CN.patch"
+      - "localization/zh-CN.json"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      T3CODE_ZH_CN: "1"
+      T3CODE_DESKTOP_UPDATE_REPOSITORY: troyluce/t3code-cn
+      T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR: "true"
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      PYTHONUTF8: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: 应用已验证的汉化源码
+        run: |
+          mkdir -p build/logs release
+          if git apply --check localization/windows-zh-CN.patch; then
+            git apply localization/windows-zh-CN.patch
+          elif git apply --reverse --check localization/windows-zh-CN.patch; then
+            echo '汉化源码已应用。'
+          else
+            echo '补丁与稳定版源码不匹配。'
+            exit 1
+          fi
+          cp .env.example .env
+      - name: 安装 Windows 构建依赖
+        uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=t3... --filter=@t3tools/scripts... --filter=@t3tools/oxlint-plugin-t3code...
+      - name: 检查汉化逻辑与类型
+        run: |
+          set -euo pipefail
+          vp lint scripts/lib/zh-cn-localization.ts scripts/lib/zh-cn-localization.test.ts scripts/smoke-chinese-desktop.mjs apps/web/src/timestampFormat.ts apps/web/src/timestampFormat.test.ts 2>&1 | tee build/logs/lint.log
+          (cd scripts && vp test run --config ../vite.config.ts --dir . lib/zh-cn-localization.test.ts) 2>&1 | tee build/logs/localization-tests.log
+          (cd apps/web && vp test run --project unit src/timestampFormat.test.ts) 2>&1 | tee build/logs/timestamp-tests.log
+          vp run --filter @t3tools/scripts --filter @t3tools/web --filter @t3tools/desktop typecheck 2>&1 | tee build/logs/typecheck.log
+      - name: 下载并校验官方同版本运行时
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/official
+          gh release download v0.1.7 --repo pingdotgg/t3code --pattern SHA256SUMS --pattern t3-0.1.7-linux-x64.tar.gz --pattern t3-0.1.7-win32-x64.zip --dir build/official
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, zipfile
+          root = Path('build/official')
+          sums = {Path(line.split()[1].lstrip('*')).name: line.split()[0] for line in (root / 'SHA256SUMS').read_text().splitlines()}
+          for name in ['t3-0.1.7-linux-x64.tar.gz', 't3-0.1.7-win32-x64.zip']:
+              digest = hashlib.sha256((root / name).read_bytes()).hexdigest()
+              assert digest == sums[name], name
+          with zipfile.ZipFile(root / 't3-0.1.7-win32-x64.zip') as archive:
+              entries = [name for name in archive.namelist() if name.endswith('/t3-resource-monitor.exe')]
+              assert len(entries) == 1, entries
+              monitor = Path('native/resource-monitor/target/x86_64-pc-windows-msvc/release/t3-resource-monitor.exe')
+              monitor.parent.mkdir(parents=True, exist_ok=True)
+              monitor.write_bytes(archive.read(entries[0]))
+              assert monitor.read_bytes().startswith(b'MZ')
+          print('PASS: 官方 Windows 和 WSL 运行时 SHA-256 校验通过。')
+          PY
+      - name: 记录待构建源码提交
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- package.json apps/desktop/package.json apps/desktop/src/boot.ts apps/desktop/vite.config.ts apps/web/index.html apps/web/tsconfig.json apps/web/vite.config.ts apps/web/src/timestampFormat.ts apps/web/src/timestampFormat.test.ts scripts/package.json scripts/build-desktop-artifact.ts scripts/lib/zh-cn-localization.ts scripts/lib/zh-cn-localization.test.ts scripts/smoke-chinese-desktop.mjs pnpm-lock.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m 'feat(desktop): 构建 Windows 简体中文版并保留消息协议标识'
+          fi
+          git rev-parse HEAD > build/source-commit.txt
+      - name: 构建 Windows x64 中文安装器
+        run: |
+          set -euo pipefail
+          node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --build-version 0.1.7 --output-dir release --keep-stage --wsl-runtime "$GITHUB_WORKSPACE/build/official/t3-0.1.7-linux-x64.tar.gz" 2>&1 | tee build/logs/build-windows.log
+      - name: 启动打包程序并验证中文界面
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import tempfile, shutil
+          candidates = list(Path(tempfile.gettempdir()).glob('t3code-desktop-win-stage-*/app/dist/win-unpacked'))
+          assert len(candidates) == 1, candidates
+          shutil.copytree(candidates[0], Path('release/win-unpacked'))
+          PY
+          vp run release:smoke:zh-CN 'release/win-unpacked/T3 Code 中文版.exe' release 2>&1 | tee build/logs/launch.log
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, struct, json
+          root = Path('release')
+          installers = list(root.glob('*.exe'))
+          assert len(installers) == 1, installers
+          installer = installers[0]
+          assert installer.name == 'T3-Code-0.1.7-zh-CN-x64.exe'
+          assert installer.read_bytes()[:2] == b'MZ'
+          app = (root / 'win-unpacked/T3 Code 中文版.exe').read_bytes()
+          pe = struct.unpack_from('<I', app, 0x3c)[0]
+          assert app[pe:pe+4] == b'PE\0\0'
+          assert struct.unpack_from('<H', app, pe+4)[0] == 0x8664
+          digest = hashlib.sha256(installer.read_bytes()).hexdigest()
+          (root / 'SHA256SUMS.txt').write_text(f'{digest}  {installer.name}\n', encoding='utf-8')
+          (root / 'source-commit.txt').write_text(Path('build/source-commit.txt').read_text(), encoding='utf-8')
+          report = {'version': '0.1.7', 'architecture': 'x64', 'language': 'zh-CN', 'installer': installer.name, 'sha256': digest, 'sourceCommit': (root / 'source-commit.txt').read_text().strip(), 'wslRuntime': 'official 0.1.7 Linux x64', 'codeSigning': 'unsigned community build'}
+          (root / 'build-info.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+          print('PASS: 中文安装器、x64 程序和 SHA-256 校验完成。')
+          PY
+      - name: 上传已验证的安装包
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: T3-Code-Windows-0.1.7-zh-CN-x64
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/*.yml
+            release/*.txt
+            release/*.json
+            release/*.png
+          if-no-files-found: error
+          retention-days: 14
+      - name: 发布到 GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git push origin HEAD:refs/heads/codex/windows-zh-0.1.7
+          T3_RELEASE_SOURCE=$(cat build/source-commit.txt)
+          gh release create v0.1.7-zh-CN.1 --target "$T3_RELEASE_SOURCE" --title 'T3 Code Windows 简体中文版 0.1.7 · x64' --notes-file localization/RELEASE.windows.md release/*.exe release/*.blockmap release/*.yml release/SHA256SUMS.txt release/build-info.json release/source-commit.txt release/launch-verification.json release/windows-home.png release/windows-settings.png
+      - name: 保存构建日志与启动截图
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: windows-zh-CN-build-log
+          path: |
+            build/logs/
+            release/*.png
+            release/launch-verification.json
+          if-no-files-found: ignore
+          retention-days: 7
