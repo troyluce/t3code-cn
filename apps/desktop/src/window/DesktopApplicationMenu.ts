@@ -175,11 +175,11 @@ export const make = Effect.gen(function* () {
             click: settingsClick,
           },
           { type: "separator" },
-          { role: "services" },
+          { role: "services", label: "服务" },
           { type: "separator" },
           { role: "hide", label: `Hide ${environment.displayName}` },
-          { role: "hideOthers" },
-          { role: "unhide" },
+          { role: "hideOthers", label: "隐藏其他窗口" },
+          { role: "unhide", label: "显示全部窗口" },
           { type: "separator" },
           { role: "quit", label: `Quit ${environment.displayName}` },
         ],
@@ -203,32 +203,35 @@ export const make = Effect.gen(function* () {
           // Cmd/Ctrl+W belongs to the renderer's tab close; it must never close the window.
           environment.platform === "darwin"
             ? { label: "Close Window", click: (_item, window) => window?.close() }
-            : { role: "quit" },
+            : { role: "quit", label: "退出" },
         ],
       },
       {
         label: "Edit",
         submenu: [
-          { role: "undo" },
-          { role: "redo" },
+          { role: "undo", label: "撤销" },
+          { role: "redo", label: "重做" },
           { type: "separator" },
-          { role: "cut" },
-          { role: "copy" },
-          { role: "paste" },
+          { role: "cut", label: "剪切" },
+          { role: "copy", label: "复制" },
+          { role: "paste", label: "粘贴" },
           {
             label: "Paste as Text",
             accelerator: "CmdOrCtrl+Shift+V",
             click: pasteAsTextClick,
           },
-          { role: "delete" },
+          { role: "delete", label: "删除" },
           { type: "separator" },
-          { role: "selectAll" },
+          { role: "selectAll", label: "全选" },
           ...(environment.platform === "darwin"
             ? [
                 { type: "separator" as const },
                 {
                   label: "Speech",
-                  submenu: [{ role: "startSpeaking" as const }, { role: "stopSpeaking" as const }],
+                  submenu: [
+                    { role: "startSpeaking" as const, label: "开始朗读" },
+                    { role: "stopSpeaking" as const, label: "停止朗读" },
+                  ],
                 },
               ]
             : []),
@@ -289,22 +292,24 @@ export const make = Effect.gen(function* () {
             click: zoomClick("out"),
           },
           { type: "separator" },
-          { role: "togglefullscreen" },
+          { role: "togglefullscreen", label: "切换全屏" },
         ],
       },
       {
         // Electron's default Window submenu adds a Ctrl+W close role off macOS.
         role: "windowMenu",
+        label: "窗口",
         submenu: [
-          { role: "minimize" },
-          { role: "zoom" },
+          { role: "minimize", label: "最小化" },
+          { role: "zoom", label: "缩放" },
           ...(environment.platform === "darwin"
-            ? [{ type: "separator" as const }, { role: "front" as const }]
+            ? [{ type: "separator" as const }, { role: "front" as const, label: "前置所有窗口" }]
             : []),
         ],
       },
       {
         role: "help",
+        label: "帮助",
         submenu: [
           {
             label: "Check for Updates...",

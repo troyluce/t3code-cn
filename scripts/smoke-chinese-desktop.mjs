@@ -37,7 +37,7 @@ try {
   const menuLabels = await app.evaluate(
     ({ Menu }) => Menu.getApplicationMenu()?.items.map((item) => item.label) ?? [],
   );
-  for (const label of ["文件", "编辑", "视图"])
+  for (const label of ["文件", "编辑", "视图", "窗口", "帮助"])
     NodeAssert.ok(menuLabels.includes(label), "菜单缺少中文：" + label);
   const onboardingClose = page.getByRole("button", { name: "关闭", exact: true });
   if (await onboardingClose.isVisible()) {
