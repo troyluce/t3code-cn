@@ -86,7 +86,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -- package.json apps/desktop/package.json apps/desktop/src/boot.ts apps/desktop/vite.config.ts apps/web/index.html apps/web/tsconfig.json apps/web/vite.config.ts apps/web/src/timestampFormat.ts apps/web/src/timestampFormat.test.ts scripts/package.json scripts/build-desktop-artifact.ts scripts/lib/zh-cn-localization.ts scripts/lib/zh-cn-localization.test.ts scripts/smoke-chinese-desktop.mjs pnpm-lock.yaml
+          git add -- apps/web/src/components/onboarding/WelcomeWizard.tsx apps/web/src/components/ui/standalone-page.tsx package.json apps/desktop/package.json apps/desktop/src/boot.ts apps/desktop/vite.config.ts apps/web/index.html apps/web/tsconfig.json apps/web/vite.config.ts apps/web/src/timestampFormat.ts apps/web/src/timestampFormat.test.ts scripts/package.json scripts/build-desktop-artifact.ts scripts/lib/zh-cn-localization.ts scripts/lib/zh-cn-localization.test.ts scripts/smoke-chinese-desktop.mjs pnpm-lock.yaml
           if ! git diff --cached --quiet; then
             mkdir -p "$RUNNER_TEMP/t3-ci-empty-hooks"
             git -c core.hooksPath="$RUNNER_TEMP/t3-ci-empty-hooks" commit -m 'feat(desktop): 构建 Windows 简体中文版并保留消息协议标识' 
