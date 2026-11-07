@@ -1,0 +1,788 @@
+diff --git a/apps/desktop/package.json b/apps/desktop/package.json
+index 729690b8..0cc05dde 100644
+--- a/apps/desktop/package.json
++++ b/apps/desktop/package.json
+@@ -40,5 +40,5 @@
+     "tailwindcss": "^4.0.0",
+     "vite-plus": "catalog:"
+   },
+-  "productName": "T3 Code (Beta)"
++  "productName": "T3 Code 中文版"
+ }
+diff --git a/apps/desktop/src/boot.ts b/apps/desktop/src/boot.ts
+index f2524f24..fea4f78e 100644
+--- a/apps/desktop/src/boot.ts
++++ b/apps/desktop/src/boot.ts
+@@ -1,2 +1,3 @@
+ require("./compileCache.cjs");
++require("electron").app.commandLine.appendSwitch("lang", "zh-CN");
+ require("./main.cjs");
+diff --git a/apps/desktop/vite.config.ts b/apps/desktop/vite.config.ts
+index 1160d901..a64c9305 100644
+--- a/apps/desktop/vite.config.ts
++++ b/apps/desktop/vite.config.ts
+@@ -3,6 +3,7 @@ import { defaultInclude, defineConfig } from "vite-plus";
+ 
+ import { isDesktopRuntimeExternalDependency } from "../../scripts/lib/desktop-external-packages.ts";
+ import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
++import { chineseLocalizationPlugin } from "../../scripts/lib/zh-cn-localization.ts";
+ 
+ const repoEnv = loadRepoEnv();
+ 
+@@ -58,6 +59,7 @@ export default defineConfig({
+       define: publicConfigDefine,
+       outputOptions: { codeSplitting: false },
+       entry: ["src/main.ts"],
++      plugins: [chineseLocalizationPlugin()],
+       clean: true,
+       deps: {
+         alwaysBundle: (id) => !id.startsWith("node:") && !isMainProcessExternal(id),
+diff --git a/apps/web/index.html b/apps/web/index.html
+index a7a5e745..58772fe2 100644
+--- a/apps/web/index.html
++++ b/apps/web/index.html
+@@ -1,5 +1,5 @@
+ <!doctype html>
+-<html lang="en">
++<html lang="zh-CN">
+   <head>
+     <meta charset="UTF-8" />
+     <meta
+diff --git a/apps/web/src/timestampFormat.test.ts b/apps/web/src/timestampFormat.test.ts
+index 5b5e11d8..d09db458 100644
+--- a/apps/web/src/timestampFormat.test.ts
++++ b/apps/web/src/timestampFormat.test.ts
+@@ -9,13 +9,13 @@ describe("timestamps in an explicit time zone", () => {
+ 
+   it("picks relative days from the calendar in that zone", () => {
+     expect(formatUpcomingTimestamp("2026-07-02T00:30:00.000Z", "12-hour", now, zone)).not.toMatch(
+-      /tomorrow/,
++      /明天/,
+     );
+     expect(formatUpcomingTimestamp("2026-07-02T05:30:00.000Z", "12-hour", now, zone)).toMatch(
+-      /^tomorrow at /,
++      /^明天 /,
+     );
+     expect(formatDayAwareTimestamp("2026-07-01T03:30:00.000Z", "12-hour", now, zone)).toMatch(
+-      /^yesterday at /,
++      /^昨天 /,
+     );
+   });
+ });
+diff --git a/apps/web/src/timestampFormat.ts b/apps/web/src/timestampFormat.ts
+index abad9140..0c845fd1 100644
+--- a/apps/web/src/timestampFormat.ts
++++ b/apps/web/src/timestampFormat.ts
+@@ -20,25 +20,7 @@ function getTimestampFormatOptions(
+   };
+ }
+ 
+-function resolveTimestampLocale(systemLocale: string | null | undefined): string | undefined {
+-  const tag = systemLocale?.trim();
+-  if (!tag) return undefined;
+-
+-  try {
+-    // Reject structurally invalid tags; let ICU fall back for valid tags it lacks data for.
+-    Intl.DateTimeFormat.supportedLocalesOf([tag]);
+-    return tag;
+-  } catch {
+-    return undefined;
+-  }
+-}
+-
+-function readHostSystemLocale(): string | null {
+-  if (typeof window === "undefined") return null;
+-  return window.desktopBridge?.getSystemLocale() ?? null;
+-}
+-
+-const timestampLocale = resolveTimestampLocale(readHostSystemLocale());
++const timestampLocale = "zh-CN";
+ 
+ const WEEKDAY_INDEXES = [0, 1, 2, 3, 4, 5, 6] as const;
+ type WeekdayIndex = (typeof WEEKDAY_INDEXES)[number];
+@@ -98,25 +80,11 @@ export function parseTimestampDate(isoDate: string): Date | null {
+   return Number.isNaN(date.getTime()) ? null : date;
+ }
+ 
+-// Deliberately not the host locale: the tooltip's ordinal suffix and
+-// day-before-month order below are English, so a localized month alone would
+-// read "4th Juni 2026".
+-const monthNameFormatter = new Intl.DateTimeFormat("en-US", { month: "long" });
+-
+-function ordinalSuffix(day: number): string {
+-  const lastTwo = day % 100;
+-  if (lastTwo >= 11 && lastTwo <= 13) return "th";
+-  switch (day % 10) {
+-    case 1:
+-      return "st";
+-    case 2:
+-      return "nd";
+-    case 3:
+-      return "rd";
+-    default:
+-      return "th";
+-  }
+-}
++const tooltipDateFormatter = new Intl.DateTimeFormat("zh-CN", {
++  year: "numeric",
++  month: "long",
++  day: "numeric",
++});
+ 
+ export function formatChatTimestampTooltip(
+   isoDate: string,
+@@ -125,10 +93,7 @@ export function formatChatTimestampTooltip(
+   const date = parseTimestampDate(isoDate);
+   if (!date) return "";
+   const time = formatShortTimestamp(isoDate, timestampFormat);
+-  const day = date.getDate();
+-  const month = monthNameFormatter.format(date);
+-  const year = date.getFullYear();
+-  return `${time}, ${day}${ordinalSuffix(day)} ${month} ${year}`;
++  return `${tooltipDateFormatter.format(date)} ${time}`;
+ }
+ 
+ export function formatShortTimestamp(isoDate: string, timestampFormat: TimestampFormat): string {
+@@ -196,7 +161,7 @@ export function formatDayAwareTimestamp(
+   const dayDiff = today.index - messageDay.index;
+ 
+   if (dayDiff <= 0) return time;
+-  if (dayDiff === 1) return `yesterday at ${time}`;
++  if (dayDiff === 1) return `昨天 ${time}`;
+   return `${formatNumericDate(date, messageDay.year === today.year, timeZone)} ${time}`;
+ }
+ 
+@@ -217,7 +182,7 @@ export function formatUpcomingTimestamp(
+ 
+   if (dayDiff < 0) return formatDayAwareTimestamp(isoDate, timestampFormat, nowMs, timeZone);
+   if (dayDiff === 0) return time;
+-  if (dayDiff === 1) return `tomorrow at ${time}`;
++  if (dayDiff === 1) return `明天 ${time}`;
+   return `${formatNumericDate(date, targetDay.year === today.year, timeZone)} ${time}`;
+ }
+ 
+@@ -261,13 +226,13 @@ export function msUntilRelativeTimeChange(
+ 
+ export function formatRelativeElapsed(elapsedMs: number): RelativeTimeParts {
+   const seconds = Math.floor(elapsedMs / 1000);
+-  if (seconds < 60) return { value: "just now", suffix: null };
++  if (seconds < 60) return { value: "刚刚", suffix: null };
+   const minutes = Math.floor(seconds / 60);
+-  if (minutes < 60) return { value: `${minutes}m`, suffix: "ago" };
++  if (minutes < 60) return { value: `${minutes}分钟`, suffix: "前" };
+   const hours = Math.floor(minutes / 60);
+-  if (hours < 24) return { value: `${hours}h`, suffix: "ago" };
++  if (hours < 24) return { value: `${hours}小时`, suffix: "前" };
+   const days = Math.floor(hours / 24);
+-  return { value: `${days}d`, suffix: "ago" };
++  return { value: `${days}天`, suffix: "前" };
+ }
+ 
+ export function formatRelativeTime(
+@@ -281,27 +246,27 @@ export function formatRelativeTime(
+ export function formatRelativeTimeLabel(isoDate: string, nowMs: number = Date.now()) {
+   const relative = formatRelativeTime(isoDate, nowMs);
+   if (!relative) return "";
+-  return relative.suffix ? `${relative.value} ${relative.suffix}` : relative.value;
++  return relative.suffix ? `${relative.value}${relative.suffix}` : relative.value;
+ }
+ 
+ export function formatElapsedDurationLabel(isoDate: string, nowMs: number = Date.now()): string {
+   const date = parseTimestampDate(isoDate);
+   if (!date) return "";
+   const diffMs = nowMs - date.getTime();
+-  if (diffMs <= 0) return "just now";
++  if (diffMs <= 0) return "刚刚";
+ 
+   const seconds = Math.floor(diffMs / 1000);
+-  if (seconds < 5) return "just now";
+-  if (seconds < 60) return `${seconds}s`;
++  if (seconds < 5) return "刚刚";
++  if (seconds < 60) return `${seconds}秒`;
+ 
+   const minutes = Math.floor(seconds / 60);
+-  if (minutes < 60) return `${minutes}m`;
++  if (minutes < 60) return `${minutes}分钟`;
+ 
+   const hours = Math.floor(minutes / 60);
+-  if (hours < 24) return `${hours}h`;
++  if (hours < 24) return `${hours}小时`;
+ 
+   const days = Math.floor(hours / 24);
+-  return `${days}d`;
++  return `${days}天`;
+ }
+ 
+ /** Pass nowMs to match a parent-driven render tick. */
+@@ -309,16 +274,16 @@ export function formatExpiresInLabel(isoDate: string, nowMs: number = Date.now()
+   const date = parseTimestampDate(isoDate);
+   if (!date) return "";
+   const diffMs = date.getTime() - nowMs;
+-  if (diffMs <= 0) return "Expired";
++  if (diffMs <= 0) return "已过期";
+ 
+   const totalSeconds = Math.floor(diffMs / 1000);
+-  if (totalSeconds < 5) return "Expires in a moment";
+-  if (totalSeconds < 60) return `Expires in ${totalSeconds}s`;
++  if (totalSeconds < 5) return "即将过期";
++  if (totalSeconds < 60) return `${totalSeconds}秒后过期`;
+ 
+   if (totalSeconds < 3600) {
+     const minutes = Math.floor(totalSeconds / 60);
+     const seconds = totalSeconds % 60;
+-    return seconds === 0 ? `Expires in ${minutes}m` : `Expires in ${minutes}m ${seconds}s`;
++    return seconds === 0 ? `${minutes}分钟后过期` : `${minutes}分钟 ${seconds}秒后过期`;
+   }
+ 
+   if (totalSeconds < 86_400) {
+@@ -326,22 +291,22 @@ export function formatExpiresInLabel(isoDate: string, nowMs: number = Date.now()
+     const rem = totalSeconds % 3600;
+     const minutes = Math.floor(rem / 60);
+     const seconds = rem % 60;
+-    const parts = [`${hours}h`];
+-    if (minutes > 0) parts.push(`${minutes}m`);
+-    if (seconds > 0) parts.push(`${seconds}s`);
+-    return `Expires in ${parts.join(" ")}`;
++    const parts = [`${hours}小时`];
++    if (minutes > 0) parts.push(`${minutes}分钟`);
++    if (seconds > 0) parts.push(`${seconds}秒`);
++    return `${parts.join("")}后过期`;
+   }
+ 
+   const days = Math.floor(totalSeconds / 86_400);
+   const remAfterDays = totalSeconds % 86_400;
+-  if (remAfterDays === 0) return `Expires in ${days}d`;
++  if (remAfterDays === 0) return `${days}天后过期`;
+   const hours = Math.floor(remAfterDays / 3600);
+   const rem = remAfterDays % 3600;
+   const minutes = Math.floor(rem / 60);
+   const seconds = rem % 60;
+   const tail: string[] = [];
+-  if (hours > 0) tail.push(`${hours}h`);
+-  if (minutes > 0) tail.push(`${minutes}m`);
+-  if (seconds > 0) tail.push(`${seconds}s`);
+-  return tail.length > 0 ? `Expires in ${days}d ${tail.join(" ")}` : `Expires in ${days}d`;
++  if (hours > 0) tail.push(`${hours}小时`);
++  if (minutes > 0) tail.push(`${minutes}分钟`);
++  if (seconds > 0) tail.push(`${seconds}秒`);
++  return tail.length > 0 ? `${days}天 ${tail.join("")}后过期` : `${days}天后过期`;
+ }
+diff --git a/apps/web/tsconfig.json b/apps/web/tsconfig.json
+index b9cd3ad6..d1dbfe10 100644
+--- a/apps/web/tsconfig.json
++++ b/apps/web/tsconfig.json
+@@ -34,6 +34,8 @@
+     "scripts/verify-built-boot.ts",
+     "scripts/warm-dep-cache.ts",
+     "../../scripts/lib/public-config.ts",
++    "../../scripts/lib/zh-cn-localization.ts",
++    "../../localization/zh-CN.json",
+     "../../scripts/lib/third-party-licenses.ts"
+   ]
+ }
+diff --git a/apps/web/vite.config.ts b/apps/web/vite.config.ts
+index da07814b..1b143b76 100644
+--- a/apps/web/vite.config.ts
++++ b/apps/web/vite.config.ts
+@@ -19,6 +19,7 @@ import {
+ } from "@t3tools/shared/devProxy";
+ 
+ import { loadRepoEnv } from "../../scripts/lib/public-config";
++import { chineseLocalizationPlugin } from "../../scripts/lib/zh-cn-localization.ts";
+ import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
+ import { tailwindPlugins } from "./vite/tailwind";
+ import { warmBundledDevPlugin } from "./vite/warmBundledDev";
+@@ -266,6 +267,7 @@ export default defineConfig(() => {
+     },
+     assetsInclude: ["**/*.wasm"],
+     plugins: [
++      chineseLocalizationPlugin(),
+       devCompressionPlugin(),
+       chunkCycleGuardPlugin(),
+       builtDev
+diff --git a/package.json b/package.json
+index 7b716699..be89e814 100644
+--- a/package.json
++++ b/package.json
+@@ -53,6 +53,7 @@
+     "dist:desktop:win:arm64": "node scripts/build-desktop-artifact.ts --platform win --target nsis --arch arm64",
+     "dist:desktop:win:x64": "node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64",
+     "release:smoke": "node scripts/release-smoke.ts",
++    "release:smoke:zh-CN": "node scripts/smoke-chinese-desktop.mjs",
+     "clean": "rm -rf node_modules apps/*/node_modules packages/*/node_modules apps/*/dist apps/*/dist-electron packages/*/dist .vite-plus apps/*/.vite-plus packages/*/.vite-plus",
+     "sync:repos": "node scripts/sync-reference-repos.ts"
+   },
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index efc7f6e9..4f616137 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -2494,6 +2494,9 @@ importers:
+       esbuild:
+         specifier: 0.28.2
+         version: 0.28.2
++      magic-string:
++        specifier: 0.30.21
++        version: 0.30.21
+       postject:
+         specifier: 1.0.0-alpha.6
+         version: 1.0.0-alpha.6
+@@ -6068,10 +6071,6 @@ packages:
+   '@pierre/highlights@0.2.0':
+     resolution: {integrity: sha512-hTpcOU1EzDAP4bYtEhxmMu2jwMvtkUydRUBUpWMSHTs3dw0IaC3Ld5ansMy18L0GE3b6Vfl2OGkLK+pWWpnBmw==}
+ 
+-  '@pierre/theme@1.1.0':
+-    resolution: {integrity: sha512-GC2OWTAfTIIWWYhPCygwG8t2EtePQkRfON4MI2rwIkJylmiyqIttJID2dCL8sUD8cNdEvYkEyfEHHKMeCiDLoQ==}
+-    engines: {vscode: ^1.0.0}
+-
+   '@pierre/theme@2.0.0':
+     resolution: {integrity: sha512-yNDd9GYLQl1mEUJR8AneJ5e4ohLIHQd/wZLWr4fagt78vS2RwwZNW530vVgHqXFAyFVcFlRmGUD5ramXH46OXw==}
+     engines: {vscode: ^1.0.0}
+@@ -15697,8 +15696,6 @@ snapshots:
+ 
+   '@pierre/highlights@0.2.0': {}
+ 
+-  '@pierre/theme@1.1.0': {}
+-
+   '@pierre/theme@2.0.0': {}
+ 
+   '@pierre/theming@1.0.0(@pierre/theme@2.0.0)(@shikijs/themes@4.2.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(shiki@4.2.0)':
+diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
+index 6756f6fe..7b8cb458 100644
+--- a/scripts/build-desktop-artifact.ts
++++ b/scripts/build-desktop-artifact.ts
+@@ -973,7 +973,7 @@ interface StagePackageJson {
+ }
+ 
+ export const STAGE_INSTALL_ARGS = ["install", "--prod"] as const;
+-export const DESKTOP_ELECTRON_LANGUAGES = ["en-US"] as const;
++export const DESKTOP_ELECTRON_LANGUAGES = ["en-US", "zh-CN"] as const;
+ export const DESKTOP_FILE_EXCLUSIONS = [
+   // Cursor walks from argv[1] to platform assets; helpers and native addons need real paths outside ASAR.
+   "!**/node_modules/@cursor/sdk-*/**/*",
+@@ -2774,7 +2774,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+     afterPack: (yield* Path.Path).join(yield* RepoRoot, "scripts/prepare-server-compile-cache.cjs"),
+     appId: DESKTOP_APP_ID,
+     productName: resolveDesktopProductName(version),
+-    artifactName: "T3-Code-${version}-${arch}.${ext}",
++    artifactName: "T3-Code-${version}-zh-CN-${arch}.${ext}",
+     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
+     files: [
+       ...DESKTOP_FILE_EXCLUSIONS,
+@@ -2937,6 +2937,8 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+     buildConfig.npmRebuild = false;
+     buildConfig.nsis = {
+       differentialPackage: true,
++      installerLanguages: ["zh_CN", "en_US"],
++      language: "2052",
+       include: "apps/desktop/resources/installer.nsh",
+     };
+     const winConfig: Record<string, unknown> = {
+diff --git a/scripts/lib/zh-cn-localization.test.ts b/scripts/lib/zh-cn-localization.test.ts
+new file mode 100644
+index 00000000..3a5d3491
+--- /dev/null
++++ b/scripts/lib/zh-cn-localization.test.ts
+@@ -0,0 +1,95 @@
++import { assert, describe, it } from "@effect/vitest";
++import { localizeChineseCode } from "./zh-cn-localization.ts";
++
++const file = "/fixture/apps/web/src/Fixture.tsx";
++
++describe("Chinese build translation", () => {
++  it("translates display values while preserving command identifiers, routes and input values", () => {
++    const input = `import { Settings } from "./Settings";
++      const request = {type: "message.dispatch", command: "Stop", value: "Default", title: "New thread"};
++      const route = "/settings";
++      type StageLabel = "Beta";
++      function resolveStageLabel(): StageLabel { return "Beta"; }
++      const info = {label: "message.dispatch"};
++      const error = new Error("Settings");
++      confirmApproval("accept"); confirmMerge("merge"); setError("offline");
++      const node = <button aria-label="Settings" value="Default">Settings</button>;
++      if (request.command === "Stop") request.value = "Default";`;
++    const output = localizeChineseCode(input, file, {
++      Settings: "设置",
++      "New thread": "新建会话",
++      Default: "默认",
++      Beta: "测试版",
++      accept: "接受",
++      merge: "合并",
++      offline: "离线",
++      "message.dispatch": "调度消息",
++    })!.code;
++    assert.include(output, 'title: "新建会话"');
++    assert.include(output, 'aria-label={"设置"}');
++    assert.include(output, ">设置</button>");
++    for (const preserved of [
++      '"./Settings"',
++      'type: "message.dispatch"',
++      'command: "Stop"',
++      'value: "Default"',
++      '"/settings"',
++      'request.command === "Stop"',
++      'return "Beta"',
++      'label: "message.dispatch"',
++      'new Error("Settings")',
++      'confirmApproval("accept")',
++      'confirmMerge("merge")',
++      'setError("offline")',
++    ])
++      assert.include(output, preserved);
++  });
++
++  it("preserves interpolation evaluation and coercion order when Chinese reorders placeholders", () => {
++    const input = "const label = {title: `Find ${first()} in ${second()}`}; return label.title;";
++    const output = localizeChineseCode(input, file, { "Find {0} in {1}": "在{1}中查找{0}" })!.code;
++    const calls: string[] = [];
++    const result = Function(
++      "first",
++      "second",
++      output,
++    )(
++      () => {
++        calls.push("first");
++        return {
++          toString: () => {
++            calls.push("first-string");
++            return "文件";
++          },
++        };
++      },
++      () => {
++        calls.push("second");
++        return {
++          toString: () => {
++            calls.push("second-string");
++            return "项目";
++          },
++        };
++      },
++    );
++    assert.equal(result, "在项目中查找文件");
++    assert.deepEqual(calls, ["first", "first-string", "second", "second-string"]);
++    assert.throws(
++      () => localizeChineseCode(input, file, { "Find {0} in {1}": "缺少一个占位符{0}" }),
++      /Invalid translation placeholders/,
++    );
++  });
++
++  it("handles JSX boundaries, nested text and Chinese plural counts without losing dynamic values", () => {
++    const input =
++      'const label = {title: `${count} thread${count === 1 ? "" : "s"}`}; return label.title;';
++    const output = localizeChineseCode(input, file, { "{0} thread{1}": "{0} 个会话{1}" })!.code;
++    assert.equal(Function("count", output)(2), "2 个会话");
++    const jsx = "const node = <p>\n  Open &amp; close\n</p>;";
++    assert.include(
++      localizeChineseCode(jsx, file, { "Open &amp; close": "打开 & 关闭" })!.code,
++      "打开 &amp; 关闭",
++    );
++  });
++});
+diff --git a/scripts/lib/zh-cn-localization.ts b/scripts/lib/zh-cn-localization.ts
+new file mode 100644
+index 00000000..8dbc1466
+--- /dev/null
++++ b/scripts/lib/zh-cn-localization.ts
+@@ -0,0 +1,210 @@
++import MagicString from "magic-string";
++import ts from "typescript-legacy";
++import type { Plugin } from "vite-plus";
++import translations from "../../localization/zh-CN.json" with { type: "json" };
++
++const displayProperties =
++  /^(?:aria-label|aria-description|title|label|description|placeholder|alt|message|detail|heading|summary|hint|helpText|tooltip|emptyText|emptyMessage|errorMessage|successMessage|buttonLabel|confirmLabel|cancelLabel|text|caption|shortLabel|searchPlaceholder|loadingText|fallbackLabel)$/;
++const dictionary: Readonly<Record<string, string>> = translations;
++const normalize = (text: string) => text.replace(/\s+/g, " ").trim();
++
++function isDisplayValue(node: ts.Node): boolean {
++  let child = node;
++  let parent = node.parent;
++  while (
++    parent &&
++    ((ts.isConditionalExpression(parent) &&
++      (parent.whenTrue === child || parent.whenFalse === child)) ||
++      ts.isParenthesizedExpression(parent) ||
++      ts.isJsxExpression(parent) ||
++      (ts.isBinaryExpression(parent) &&
++        [ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(
++          parent.operatorToken.kind,
++        )))
++  ) {
++    child = parent;
++    parent = parent.parent;
++  }
++  if (!parent) return false;
++  if (ts.isTemplateSpan(parent)) return isDisplayValue(parent.parent);
++  if (ts.isJsxAttribute(parent)) return displayProperties.test(parent.name.getText());
++  if (ts.isJsxElement(parent) || ts.isJsxFragment(parent)) return true;
++  const displayVariable =
++    /(?:labels?|titles?|descriptions?|tooltips?|hints?|placeholders?|messages?|summar(?:y|ies)|headings?|_TEXT)$/i;
++  if (ts.isVariableDeclaration(parent) && parent.initializer === child)
++    return displayVariable.test(parent.name.getText());
++  if (ts.isPropertyAssignment(parent) && parent.initializer === child) {
++    const name = parent.name.getText().replace(/^['"]|['"]$/g, "");
++    if (displayProperties.test(name)) return true;
++    if (
++      /^(?:value|id|type|key|code|command|method|model|provider|route|path|url|href|className|color)$/.test(
++        name,
++      )
++    )
++      return false;
++    for (let owner: ts.Node | undefined = parent.parent; owner; owner = owner.parent) {
++      if (ts.isVariableDeclaration(owner)) return displayVariable.test(owner.name.getText());
++      if (ts.isFunctionLike(owner)) return false;
++    }
++  }
++  if (ts.isCallExpression(parent)) {
++    const callee = parent.expression.getText();
++    return (
++      /^(?:(?:window|globalThis)\.)?(?:alert|confirm)$/.test(callee) ||
++      /^(?:toast(?:Manager)?|toaster)\.(?:error|success|info|warning|message|add)$/.test(callee) ||
++      /^(?:setError|setErrorMessage|setMessage|setTitle|setDescription|showError)$/.test(callee)
++    );
++  }
++  if (ts.isReturnStatement(parent)) {
++    for (let scope: ts.Node | undefined = parent.parent; scope; scope = scope.parent) {
++      if (!ts.isFunctionLike(scope)) continue;
++      if (scope.type && scope.type.kind !== ts.SyntaxKind.StringKeyword) return false;
++      const name =
++        scope.name?.getText() ??
++        (ts.isVariableDeclaration(scope.parent) ? scope.parent.name.getText() : "");
++      return /label|title|description|tooltip|display|summary|reason|message|hint|placeholder/i.test(
++        name,
++      );
++    }
++  }
++  return false;
++}
++
++function isPluralSuffix(node: ts.Node): boolean {
++  return (
++    ts.isConditionalExpression(node) &&
++    ts.isStringLiteral(node.whenTrue) &&
++    ts.isStringLiteral(node.whenFalse) &&
++    [node.whenTrue.text, node.whenFalse.text].every((value) => ["", "s", "es"].includes(value)) &&
++    (node.whenTrue.text === "" || node.whenFalse.text === "")
++  );
++}
++
++function translate(text: string, catalog: Readonly<Record<string, string>>) {
++  const key = normalize(text);
++  if (/^[a-z\d]+(?:[./:_-][a-z\d]+)+$/.test(key) || /^(?:https?:|[~/\\]|--)/.test(key))
++    return undefined;
++  const result = catalog[key];
++  if (result === undefined || result === key) return undefined;
++  const placeholders = (value: string) => [...value.matchAll(/\{\d+\}/g)].map((m) => m[0]).sort();
++  if (JSON.stringify(placeholders(key)) !== JSON.stringify(placeholders(result))) {
++    throw new Error(`Invalid translation placeholders: ${key}`);
++  }
++  return result;
++}
++
++export function localizeChineseCode(
++  code: string,
++  id: string,
++  catalog: Readonly<Record<string, string>> = dictionary,
++) {
++  const source = ts.createSourceFile(
++    id,
++    code,
++    ts.ScriptTarget.Latest,
++    true,
++    id.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
++  );
++  let edits: Array<{ start: number; end: number; text: string }> = [];
++  const renderRange = (start: number, end: number) => {
++    let value = code.slice(start, end);
++    for (const edit of edits
++      .filter((e) => e.start >= start && e.end <= end)
++      .sort((a, b) => b.start - a.start)) {
++      value = value.slice(0, edit.start - start) + edit.text + value.slice(edit.end - start);
++    }
++    return value;
++  };
++  const visit = (node: ts.Node) => {
++    ts.forEachChild(node, visit);
++    const start = ts.isJsxText(node) ? node.pos : node.getStart(source);
++    let text: string | undefined;
++    if (ts.isJsxText(node)) {
++      const raw = code.slice(start, node.end);
++      const translated = translate(raw, catalog);
++      if (translated !== undefined) {
++        const escaped = translated
++          .replace(/&(?!#\d+;|#x[\da-f]+;|[a-z]+;)/gi, "&amp;")
++          .replace(/</g, "&lt;")
++          .replace(/>/g, "&gt;")
++          .replace(/\{/g, "&#123;")
++          .replace(/\}/g, "&#125;");
++        text = (raw.match(/^\s*/)?.[0] ?? "") + escaped + (raw.match(/\s*$/)?.[0] ?? "");
++      }
++    } else if (
++      (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) &&
++      isDisplayValue(node)
++    ) {
++      let translated = translate(node.text, catalog);
++      if (ts.isCallExpression(node.parent) && /^[a-z][a-z\d]*$/.test(node.text))
++        translated = undefined;
++      if (ts.isConditionalExpression(node.parent) && isPluralSuffix(node.parent)) translated = "";
++      if (translated !== undefined) {
++        text = ts.isJsxAttribute(node.parent)
++          ? `{${JSON.stringify(translated)}}`
++          : JSON.stringify(translated);
++      }
++    } else if (ts.isTemplateExpression(node) && isDisplayValue(node)) {
++      const key =
++        node.head.text + node.templateSpans.map((span, i) => `{${i}}${span.literal.text}`).join("");
++      let translated = translate(key, catalog);
++      if (translated !== undefined) {
++        const expressions = node.templateSpans.map((span) =>
++          renderRange(span.expression.getStart(source), span.expression.end),
++        );
++        node.templateSpans.forEach((span, i) => {
++          if (isPluralSuffix(span.expression)) translated = translated?.replaceAll(`{${i}}`, "");
++        });
++        const order = [...translated.matchAll(/\{(\d+)\}/g)].map((match) => Number(match[1]));
++        const reordered = order.some(
++          (index, position) => index !== [...order].sort((a, b) => a - b)[position],
++        );
++        const literal = (value: string) =>
++          value.replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\{/g, "\\${");
++        let cursor = 0;
++        let body = "`";
++        for (const match of translated.matchAll(/\{(\d+)\}/g)) {
++          body += literal(translated.slice(cursor, match.index));
++          const index = Number(match[1]);
++          body += "${" + (reordered ? `__zh${index}` : expressions[index]) + "}";
++          cursor = match.index + match[0].length;
++        }
++        body += literal(translated.slice(cursor)) + "`";
++        // Capture interpolation values in source order before a translation reorders them.
++        text = reordered
++          ? `((${expressions.map((_, i) => `__zh${i}`).join(", ")}) => ${body})(${expressions.map((value) => "`${" + value + "}`").join(", ")})`
++          : body;
++      }
++    }
++    if (text !== undefined) {
++      edits = edits.filter((edit) => edit.start < start || edit.end > node.end);
++      edits.push({ start, end: node.end, text });
++    }
++  };
++  visit(source);
++  if (edits.length === 0) return null;
++  const output = new MagicString(code);
++  for (const edit of edits) output.overwrite(edit.start, edit.end, edit.text);
++  return {
++    code: output.toString(),
++    map: output.generateMap({ hires: true, source: id, includeContent: true }),
++  };
++}
++
++export function chineseLocalizationPlugin(): Plugin | undefined {
++  if (process.env.T3CODE_ZH_CN !== "1") return undefined;
++  return {
++    name: "t3code-zh-cn",
++    enforce: "pre",
++    apply: (_config, env) => env.mode !== "test",
++    transform(code, id) {
++      const filename = id.split("?")[0]!.replaceAll("\\", "/");
++      if (
++        !/\/apps\/(?:web|desktop)\/src\/.*\.(?:ts|tsx)$/.test(filename) ||
++        /\.(?:test|gen)\./.test(filename)
++      )
++        return null;
++      return localizeChineseCode(code, filename);
++    },
++  };
++}
+diff --git a/scripts/package.json b/scripts/package.json
+index d5f34a07..1264257e 100644
+--- a/scripts/package.json
++++ b/scripts/package.json
+@@ -25,6 +25,7 @@
+     "@types/plist": "catalog:",
+     "@types/pngjs": "6.0.5",
+     "esbuild": "0.28.2",
++    "magic-string": "0.30.21",
+     "postject": "1.0.0-alpha.6",
+     "typescript": "catalog:",
+     "typescript-legacy": "npm:typescript@~6.0.3",
+diff --git a/scripts/smoke-chinese-desktop.mjs b/scripts/smoke-chinese-desktop.mjs
+new file mode 100644
+index 00000000..0101ce67
+--- /dev/null
++++ b/scripts/smoke-chinese-desktop.mjs
+@@ -0,0 +1,74 @@
++import * as NodeFSP from "node:fs/promises";
++import * as NodeOS from "node:os";
++import * as NodePath from "node:path";
++import * as NodeAssert from "node:assert/strict";
++import { _electron } from "playwright-core";
++
++const executable = NodePath.resolve(process.argv[2]);
++const output = NodePath.resolve(process.argv[3]);
++const state = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "t3-zh-launch-"));
++await NodeFSP.mkdir(output, { recursive: true });
++const app = await _electron.launch({
++  executablePath: executable,
++  args: ["--user-data-dir=" + NodePath.join(state, "electron")],
++  env: { ...process.env, T3CODE_HOME: NodePath.join(state, "t3"), T3CODE_DEV_SEED: "0" },
++  timeout: 120000,
++});
++let deadline;
++try {
++  const page = await new Promise((resolve, reject) => {
++    deadline = setTimeout(() => reject(new Error("桌面主窗口未能加载。")), 120000);
++    const watch = (candidate) => {
++      candidate
++        .waitForURL("t3code://app/**", { timeout: 120000 })
++        .then(() => resolve(candidate))
++        .catch(() => {});
++    };
++    app.on("window", watch);
++    for (const candidate of app.windows()) watch(candidate);
++  });
++  clearTimeout(deadline);
++  await page.waitForLoadState("domcontentloaded");
++  await page
++    .getByRole("button", { name: /设置|新建|添加|创建|开始|继续|登录/ })
++    .first()
++    .waitFor({ state: "visible", timeout: 120000 });
++  NodeAssert.equal(await page.locator("html").getAttribute("lang"), "zh-CN");
++  const menuLabels = await app.evaluate(
++    ({ Menu }) => Menu.getApplicationMenu()?.items.map((item) => item.label) ?? [],
++  );
++  for (const label of ["文件", "编辑", "视图"])
++    NodeAssert.ok(menuLabels.includes(label), "菜单缺少中文：" + label);
++  await page.screenshot({ path: NodePath.join(output, "windows-home.png") });
++  await page.keyboard.press("Control+,");
++  await page
++    .getByRole("textbox", { name: "搜索设置", exact: true })
++    .waitFor({ state: "visible", timeout: 60000 });
++  await page.screenshot({ path: NodePath.join(output, "windows-settings.png") });
++  const version = await app.evaluate(({ app }) => app.getVersion());
++  NodeAssert.equal(version, "0.1.7");
++  await NodeFSP.writeFile(
++    NodePath.join(output, "launch-verification.json"),
++    JSON.stringify(
++      {
++        version,
++        locale: "zh-CN",
++        menus: menuLabels,
++        screenshots: ["windows-home.png", "windows-settings.png"],
++        checks: [
++          "packaged application launched",
++          "Chinese HTML locale",
++          "Chinese desktop menus",
++          "Chinese settings opened",
++        ],
++      },
++      null,
++      2,
++    ),
++  );
++  console.log("PASS: Windows x64 打包程序启动，中文菜单和设置页验证通过。");
++} finally {
++  clearTimeout(deadline);
++  await app.close();
++  await NodeFSP.rm(state, { recursive: true, force: true });
++}
