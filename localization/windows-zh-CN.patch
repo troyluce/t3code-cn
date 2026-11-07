@@ -415,10 +415,10 @@ index 6756f6fe..7b8cb458 100644
      const winConfig: Record<string, unknown> = {
 diff --git a/scripts/lib/zh-cn-localization.test.ts b/scripts/lib/zh-cn-localization.test.ts
 new file mode 100644
-index 00000000..815c2ad9
+index 00000000..4dbe9931
 --- /dev/null
 +++ b/scripts/lib/zh-cn-localization.test.ts
-@@ -0,0 +1,109 @@
+@@ -0,0 +1,111 @@
 +import { assert, describe, it } from "@effect/vitest";
 +import { localizeChineseCode } from "./zh-cn-localization.ts";
 +
@@ -437,6 +437,7 @@ index 00000000..815c2ad9
 +      const command = <code>npx t3 serve</code>;
 +      const example = <CodeBlock text="bun test" />;
 +      const brand = <span translate="no">Code</span>;
++      const wordmark = <span><T3Wordmark /><span>Code</span></span>;
 +      const ONBOARDING_STAGES = ["Connect", "Agents", "Projects"] as const;
 +      const node = <button aria-label="Settings" value="Default">Settings</button>;
 +      if (request.command === "Stop") request.value = "Default";`;
@@ -476,6 +477,7 @@ index 00000000..815c2ad9
 +      "<code>npx t3 serve</code>",
 +      '<CodeBlock text="bun test" />',
 +      '<span translate="no">Code</span>',
++      "<T3Wordmark /><span>Code</span>",
 +    ])
 +      assert.include(output, preserved);
 +  });
@@ -530,10 +532,10 @@ index 00000000..815c2ad9
 +});
 diff --git a/scripts/lib/zh-cn-localization.ts b/scripts/lib/zh-cn-localization.ts
 new file mode 100644
-index 00000000..20a7a73e
+index 00000000..f4901cdb
 --- /dev/null
 +++ b/scripts/lib/zh-cn-localization.ts
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,243 @@
 +import MagicString from "magic-string";
 +import ts from "typescript-legacy";
 +import type { Plugin } from "vite-plus";
@@ -664,7 +666,14 @@ index 00000000..20a7a73e
 +  const visit = (node: ts.Node) => {
 +    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node)) {
 +      const opening = ts.isJsxElement(node) ? node.openingElement : node;
++      const brand =
++        ts.isJsxElement(node) &&
++        node.children.some(
++          (child) =>
++            ts.isJsxSelfClosingElement(child) && child.tagName.getText(source) === "T3Wordmark",
++        );
 +      const verbatim =
++        brand ||
 +        /^(?:code|pre|kbd|samp|CodeBlock|CodeSnippet|InlineCode|CommandBlock)$/.test(
 +          opening.tagName.getText(source),
 +        ) ||
@@ -784,7 +793,7 @@ index d5f34a07..1264257e 100644
      "typescript-legacy": "npm:typescript@~6.0.3",
 diff --git a/scripts/smoke-chinese-desktop.mjs b/scripts/smoke-chinese-desktop.mjs
 new file mode 100644
-index 00000000..fe27d85f
+index 00000000..4acec299
 --- /dev/null
 +++ b/scripts/smoke-chinese-desktop.mjs
 @@ -0,0 +1,86 @@
@@ -844,7 +853,7 @@ index 00000000..fe27d85f
 +    settings.click(settings, BrowserWindow.getFocusedWindow(), {});
 +  });
 +  await page
-+    .getByRole("textbox", { name: "搜索设置", exact: true })
++    .getByRole("combobox", { name: "搜索设置", exact: true })
 +    .waitFor({ state: "visible", timeout: 60000 });
 +  await page.screenshot({ path: NodePath.join(output, "windows-settings.png") });
 +  const version = await app.evaluate(({ app }) => app.getVersion());
